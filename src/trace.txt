@@ -1,0 +1,64 @@
+CMD_SlmpStop: stop
+[MSGRCV] src: 9, des: 1, cmd: 35, param: 715848312, data:
+00 00 00 00 01 00 00 00
+
+CMD_SlmpPause: pause
+[MSGRCV] src: 9, des: 1, cmd: 34, param: 715848312, data:
+00 00 00 00 01 00 00 00
+
+CMD_SlmpPlayUri: playuri uri
+[MSGRCV] src: 9, des: 1, cmd: 30, param: 715848292, data: uri
+00 00 00 00 01 00 00 00
+
+CMD_SlmpSeek: seek
+[MSGRCV] src: 9, des: 1, cmd: 38, param: 50, data:
+00 00 00 00 01 00 00 00
+
+CMD_SlmpGetTimePos: gettipmepos
+[MSGRCV] src: 9, des: 1, cmd: 36, param: 0, data:
+00 00 00 00 00 00 00 00
+
+CMD_DmrGetTotalTime: gettotaltime
+[MSGRCV] src: 9, des: 1, cmd: 15, param: 0, data:
+00 00 00 00 00 00 00 00
+
+CMD_SlmpSetVolume: volume
+[MSGRCV] src: 9, des: 1, cmd: 32, param: 55, data:
+00 00 00 00 01 00 00 00
+
+CMD_SlmpGetVolume: getvolume
+[MSGRCV] src: 9, des: 1, cmd: 33, param: 0, data:
+00 00 00 00 00 00 00 00
+
+CMD_SlmpMute: mute
+[MSGRCV] src: 9, des: 1, cmd: 31, param: 715848312, data:
+00 00 00 00 01 00 00 00
+
+CMD_SlmpGetMute: getmute
+[MSGRCV] src: 9, des: 1, cmd: 46, param: 0, data:
+00 00 00 00 00 00 00 00
+
+CMD_LineIn: linein
+[MSGRCV] src: 9, des: 1, cmd: 201, param: 715848312, data:
+00 00 00 00 01 00 00 00
+
+CMD_SpdifIn: spdifin
+[MSGRCV] src: 9, des: 1, cmd: 203, param: 715848312, data:
+00 00 00 00 01 00 00 00
+
+CMD_AudioOutMode: audiooutmode (0:inner codec, 1:extra codec, 2:spdif)
+[MSGRCV] src: 2, des: 1, cmd: 200, param: 1, data:
+00 00 00 00 01 00 00 00
+
+CMD_AudioInMode: audioinmode (0:inner codec, 1:extra codec master, 2:extra codec slave)
+[MSGRCV] src: 2, des: 1, cmd: 199, param: 1, data:
+00 00 00 00 01 00 00 00
+
+CMD_SetPadMux: setpadmux (0-7)
+[MSGRCV] src: 2, des: 1, cmd: 209, param: 1, data:
+00 00 00 00 01 00 00 00
+
+CMD_SetReqChannels: setreqchannels 6
+[MSGRCV] src: 2, des: 1, cmd: 229, param: 6, data:
+00 00 00 00 01 00 00 00
+
