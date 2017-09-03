@@ -22,7 +22,7 @@
 #include "output_silan.h"
 #include "swa_msg_api.h"
 
-static output_transition_cb_t play_trans_callback_ = NULL;
+static output_transition_cb_t play_trans_callback = NULL;
 
 struct swa_ipc_msg{
 	long type;
@@ -110,7 +110,7 @@ static int output_silan_loop(void){
 
 		if(msg.ipc_data.des == SWA_SIGNAL_APK){
 #ifdef SILAN_IPC_LOGGING
-			Log_info("silan_recv_cmd", "skip: SWA_SIGNAL_APK, cmd: %d, param: %d, data: %s", msg.ipc_data.cmd, msg.ipc_data.param, msg.ipc_data.data);
+			Log_info("silan_recv_cmd", "[SKIP] dst: %d, cmd: %d, param: %d, data: %s", msg.ipc_data.des, msg.ipc_data.cmd, msg.ipc_data.param, msg.ipc_data.data);
 #endif
 			continue;
 		}
@@ -120,6 +120,11 @@ static int output_silan_loop(void){
 #endif
 
 		switch(msg.ipc_data.cmd){
+			case CMD_SlmpGetMute:
+				silan_data.mute = msg.ipc_data.param;
+				silan_data.status&= ~SILAN_DATA_MUTE;
+				break;
+
 			case CMD_SlmpGetVolume:
 				silan_data.volume = msg.ipc_data.param;
 				silan_data.status&= ~SILAN_DATA_VOLUME;
@@ -149,12 +154,12 @@ static int output_silan_loop(void){
 
 						Log_info("silan", "play next uri %s", silan_data.uri);
 						output_silan_send_cmd(CMD_SlmpPlayUri, 0, silan_data.uri);
-						if(play_trans_callback_)
-							play_trans_callback_(PLAY_STARTED_NEXT_STREAM);
+						if(play_trans_callback)
+							play_trans_callback(PLAY_STARTED_NEXT_STREAM);
 
-					}else if(play_trans_callback_){
+					}else if(play_trans_callback){
 						silan_data.status&= ~SILAN_DATA_PLAYING;
-						play_trans_callback_(PLAY_STOPPED);
+						play_trans_callback(PLAY_STOPPED);
 						output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
 					}
 				}
@@ -186,7 +191,7 @@ static int output_silan_init(void){
 	silan_data.position = 0;
 	silan_data.padmux = 1;
 
-	output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
+	//output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
 	//output_silan_send_cmd(CMD_SetPadMux, silan_data.padmux, NULL);
 
 	register_mime_type("audio/*");
@@ -217,7 +222,7 @@ static int output_silan_play(output_transition_cb_t callback) {
 
 	Log_info("silan", "play");
 
-	play_trans_callback_ = callback;
+	play_trans_callback = callback;
 	silan_data.status|= SILAN_DATA_PLAYING;
 
 	if(silan_data.uri){
@@ -285,6 +290,7 @@ static int output_silan_get_volume(int *v) {
 static int output_silan_set_volume(int v) {
 	Log_info("silan", "Set volume to %d", v);
 
+	silan_data.mute = 0;
 	return output_silan_send_cmd(CMD_SlmpSetVolume, v, NULL);
 }
 
@@ -295,13 +301,17 @@ static int output_silan_get_mute(int *m) {
 	}
 
 	*m = silan_data.mute;
-	Log_info("silan", "Get mute: %s", m ? "on" : "off");
+	Log_info("silan", "Get mute: %s", *m ? "on" : "off");
 	return 0;
 }
 
 static int output_silan_set_mute(int m) {
+	int res = 0;
 	Log_info("silan", "Set mute to %s", m ? "on" : "off");
-	return output_silan_send_cmd(CMD_SlmpMute, m, NULL);
+	if(!!m != !!silan_data.mute)
+		res = output_silan_send_cmd(CMD_SlmpMute, m, NULL);
+	silan_data.mute = m;
+	return res;
 }
 
 

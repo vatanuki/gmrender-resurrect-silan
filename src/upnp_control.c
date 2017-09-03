@@ -307,6 +307,16 @@ void upnp_control_init(struct upnp_device *device) {
 		replace_var(CONTROL_VAR_VOLUME, vol);
 	}
 
+	// Set initial mute.
+	int mute = 0;
+	if (output_get_mute(&mute) == 0) {
+		Log_info("control", "Output inital mute is %d; setting "
+			 "control variables accordingly.", mute);
+		char var[32];
+		sprintf(var, "%d", mute);
+		replace_var(CONTROL_VAR_MUTE, var);
+	}
+
 	assert(control_service_.last_change == NULL);
 	control_service_.last_change = UPnPLastChangeCollector_new(state_variables_, CONTROL_EVENT_XML_NS, device, CONTROL_SERVICE_ID);
 	// According to UPnP-av-RenderingControl-v3-Service-20101231.pdf, 2.3.1

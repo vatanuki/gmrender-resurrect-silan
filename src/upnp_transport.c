@@ -602,17 +602,13 @@ static void change_transport_state(enum transport_state new_state) {
 	const char *available_actions = NULL;
 	switch (new_state) {
 	case TRANSPORT_STOPPED:
-		if (strlen(get_var(TRANSPORT_VAR_AV_URI)) == 0) {
-			available_actions = "PLAY";
-		} else {
-			available_actions = "PLAY,SEEK";
-		}
+		available_actions = "PLAY";
 		break;
 	case TRANSPORT_PLAYING:
 		available_actions = "PAUSE,STOP,SEEK";
 		break;
 	case TRANSPORT_PAUSED_PLAYBACK:
-		available_actions = "PLAY,STOP,SEEK";
+		available_actions = "PLAY,STOP";
 		break;
 	case TRANSPORT_TRANSITIONING:
 	case TRANSPORT_PAUSED_RECORDING:
