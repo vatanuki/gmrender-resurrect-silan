@@ -77,7 +77,7 @@ static int upnp_renderer_init(void);
 static struct upnp_device_descriptor render_device = {
 	.init_function          = upnp_renderer_init,
         .device_type            = "urn:schemas-upnp-org:device:MediaRenderer:1",
-        .friendly_name          = "GMediaRender",
+        .friendly_name          = "silan",
         .manufacturer           = "Ivo Clarysse, Henner Zeller",
         .manufacturer_url       = "http://github.com/hzeller/gmrender-resurrect",
         .model_description      = PACKAGE_STRING,

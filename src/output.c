@@ -32,8 +32,6 @@
 #include <signal.h>
 #include <unistd.h>
 
-//#include <glib.h>
-
 #include "logging.h"
 #include "output_module.h"
 #include "output_silan.h"
@@ -127,9 +125,9 @@ int output_add_options(GOptionContext *ctx)
 	return 0;
 }
 */
-void output_set_uri(const char *uri, output_update_meta_cb_t meta_cb) {
+void output_set_uri(const char *uri) {
 	if (output_module && output_module->set_uri) {
-		output_module->set_uri(uri, meta_cb);
+		output_module->set_uri(uri);
 	}
 }
 void output_set_next_uri(const char *uri) {

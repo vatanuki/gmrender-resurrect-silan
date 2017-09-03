@@ -24,9 +24,6 @@
 #ifndef _OUTPUT_H
 #define _OUTPUT_H
 
-//#include <glib.h>
-#include "song-meta-data.h"
-
 // Feedback for the controlling part what is happening with the
 // output.
 enum PlayFeedback {
@@ -35,17 +32,13 @@ enum PlayFeedback {
 };
 typedef void (*output_transition_cb_t)(enum PlayFeedback);
 
-// In case the stream gets to know details about the song, this is a
-// callback with changes we send back to the controlling layer.
-typedef void (*output_update_meta_cb_t)(const struct SongMetaData *);
-
 int output_init(const char *shortname);
 //int output_add_options(GOptionContext *ctx);
 void output_dump_modules(void);
 
 int output_loop(void);
 
-void output_set_uri(const char *uri, output_update_meta_cb_t meta_info);
+void output_set_uri(const char *uri);
 void output_set_next_uri(const char *uri);
 
 int output_play(output_transition_cb_t done_callback);

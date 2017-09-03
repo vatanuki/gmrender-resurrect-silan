@@ -24,6 +24,17 @@
 #ifndef _OUTPUT_SILAN_H
 #define _OUTPUT_SILAN_H
 
+#define SILAN_IPC_LOGGING
+
+#define SILAN_RECV_TOUT 500000
+#define SILAN_RECV_RETRY 10
+
+#define SILAN_DATA_MUTE			0x0001
+#define SILAN_DATA_VOLUME		0x0002
+#define SILAN_DATA_DURATION		0x0004
+#define SILAN_DATA_POSITION		0x0008
+#define SILAN_DATA_PLAYING		0x0010
+
 extern struct output_module silan_output;
 
 #endif /*  _OUTPUT_SILAN_H */

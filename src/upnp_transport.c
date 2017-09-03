@@ -628,6 +628,7 @@ static void change_transport_state(enum transport_state new_state) {
 }
 
 // Callback from our output if the song meta data changed.
+/*
 static void update_meta_from_stream(const struct SongMetaData *meta) {
 	if (meta->title == NULL || strlen(meta->title) == 0) {
 		return;
@@ -640,7 +641,7 @@ static void update_meta_from_stream(const struct SongMetaData *meta) {
 	service_unlock();
 	free(didl);
 }
-
+*/
 /* UPnP action handlers */
 
 static int set_avtransport_uri(struct action_event *event)
@@ -656,7 +657,7 @@ static int set_avtransport_uri(struct action_event *event)
 	service_lock();
 	char *meta = upnp_get_string(event, "CurrentURIMetaData");
 	// Transport URI/Meta set now, current URI/Meta when it starts playing.
-	int requires_meta_update = replace_transport_uri_and_meta(uri, meta);
+	replace_transport_uri_and_meta(uri, meta);
 
 	if (transport_state_ == TRANSPORT_PLAYING) {
 		// Uh, wrong state.
@@ -667,9 +668,7 @@ static int set_avtransport_uri(struct action_event *event)
 		replace_current_uri_and_meta(uri, meta);
 	}
 
-	output_set_uri(uri, (requires_meta_update
-			     ? update_meta_from_stream
-			     : NULL));
+	output_set_uri(uri);
 	service_unlock();
 
 	free(uri);

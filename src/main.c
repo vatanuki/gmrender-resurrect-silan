@@ -42,7 +42,7 @@
 
 #include <upnp/ithread.h>
 
-// For version strings of upnp and gstreamer
+// For version strings of upnp
 #include <upnp/upnpconfig.h>
 
 #include "git-version.h"
@@ -59,7 +59,7 @@ static char show_connmgr_scpd = 0;
 static char show_control_scpd = 0;
 static char show_transport_scpd = 0;
 static char show_outputs = 0;
-static char daemon_mode = 1;
+static char daemon_mode = 0;
 
 static const char *ip_address = NULL;
 static int listen_port = 49494;
@@ -113,8 +113,8 @@ int main(int argc, char **argv)
 		exit(EXIT_SUCCESS);
 	}
 
-//	Log_init("stdout");
-	fprintf(stderr, "%s started [ gmediarender %s (libupnp-%s) ].\n", PACKAGE_STRING, GM_COMPILE_VERSION, UPNP_VERSION_STRING);
+	Log_init("stdout");
+//	fprintf(stderr, "%s started [ gmediarender %s (libupnp-%s) ].\n", PACKAGE_STRING, GM_COMPILE_VERSION, UPNP_VERSION_STRING);
 
 	// Now we're going to start threads etc, which means we need
 	// to become a daemon before that.
