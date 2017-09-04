@@ -1,0 +1,3 @@
+#!/bin/sh
+
+flashcp -v /home/uImage /dev/mtd1
