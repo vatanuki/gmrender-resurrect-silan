@@ -20,6 +20,7 @@
 #include <ctype.h>
 
 #include "logging.h"
+#include "upnp_control.h"
 #include "upnp_connmgr.h"
 #include "output_module.h"
 #include "output_silan.h"
@@ -67,6 +68,7 @@ static int output_silan_loop(void){
 		btn2 = output_silan_gpio_read(GPIO_BTN2);
 		if(!btn1 || !btn2)
 			Log_info("silan_loop", "buttons: %d, %d\n", btn1, btn2);
+//upnp_control_set_volume(10);
 		usleep(100000);
 	}
 
@@ -357,76 +359,6 @@ static int output_silan_set_mute(int m) {
 	silan_data.mute = m;
 	return res;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-static gchar *audio_sink = NULL;
-static gchar *audio_device = NULL;
-static gchar *videosink = NULL;
-static double initial_db = 0.0;
-*/
-/* Options specific to output_silan */
-/*
-static GOptionEntry option_entries[] = {
-        { "gstout-audiosink", 0, 0, G_OPTION_ARG_STRING, &audio_sink,
-          "silan audio sink to use "
-	  "(autoaudiosink, alsasink, osssink, esdsink, ...)",
-	  NULL },
-        { "gstout-audiodevice", 0, 0, G_OPTION_ARG_STRING, &audio_device,
-          "silan device for the given audiosink. ",
-	  NULL },
-        { "gstout-videosink", 0, 0, G_OPTION_ARG_STRING, &videosink,
-          "silan video sink to use "
-	  "(autovideosink, xvimagesink, ximagesink, ...)",
-	  NULL },
-        { "gstout-initial-volume-db", 0, 0, G_OPTION_ARG_DOUBLE, &initial_db,
-          "silan inital volume in decibel (e.g. 0.0 = max; -6 = 1/2 max) ",
-	  NULL },
-        { NULL }
-};
-*/
-
-/*static int output_silan_add_options(GOptionContext *ctx)
-{
-	GOptionGroup *option_group;
-	option_group = g_option_group_new("gstout", "silan Output Options",
-	                                  "Show silan Output Options",
-	                                  NULL, NULL);
-	g_option_group_add_entries(option_group, option_entries);
-
-	g_option_context_add_group (ctx, option_group);
-	
-	g_option_context_add_group (ctx, gst_init_get_option_group ());
-
-	return 0;
-}
-*/
 
 struct output_module silan_output = {
 	.shortname    = "slmp",

@@ -29,7 +29,6 @@
 struct output_module {
 	const char *shortname;
 	const char *description;
-//	int (*add_options)(GOptionContext *ctx);
 
 	// Commands.
 	int (*init)(void);
@@ -50,4 +49,3 @@ struct output_module {
 };
 
 #endif
-

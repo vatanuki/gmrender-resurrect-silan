@@ -43,24 +43,6 @@ static struct output_module *modules[] = {
 
 static struct output_module *output_module = NULL;
 
-void output_dump_modules(void)
-{
-	int count;
-	
-	count = sizeof(modules) / sizeof(struct output_module *);
-	if (count == 0) {
-		puts("  NONE!");
-	} else {
-		int i;
-		for (i=0; i<count; i++) {
-			printf("Available output: %s\t%s%s\n",
-			       modules[i]->shortname,
-			       modules[i]->description,
-			       (i==0) ? " (default)" : "");
-		}
-	}
-}
-
 int output_init(const char *shortname)
 {
 	int count;
@@ -107,29 +89,13 @@ int output_loop(void){
 
 	return 0;
 }
-/*
-int output_add_options(GOptionContext *ctx)
-{
-	int count, i;
 
-	count = sizeof(modules) / sizeof(struct output_module *);
-	for (i = 0; i < count; ++i) {
-		if (modules[i]->add_options) {
-			int result = modules[i]->add_options(ctx);
-			if (result != 0) {
-				return result;
-			}
-		}
-	}
-
-	return 0;
-}
-*/
 void output_set_uri(const char *uri) {
 	if (output_module && output_module->set_uri) {
 		output_module->set_uri(uri);
 	}
 }
+
 void output_set_next_uri(const char *uri) {
 	if (output_module && output_module->set_next_uri) {
 		output_module->set_next_uri(uri);
@@ -177,18 +143,21 @@ int output_get_volume(int *value) {
 	}
 	return -1;
 }
+
 int output_set_volume(int value) {
 	if (output_module && output_module->set_volume) {
 		return output_module->set_volume(value);
 	}
 	return -1;
 }
+
 int output_get_mute(int *value) {
 	if (output_module && output_module->get_mute) {
 		return output_module->get_mute(value);
 	}
 	return -1;
 }
+
 int output_set_mute(int value) {
 	if (output_module && output_module->set_mute) {
 		return output_module->set_mute(value);

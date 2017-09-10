@@ -235,41 +235,49 @@ static int list_presets(struct action_event *event)
 
 static int get_mute(struct action_event *event)
 {
-	/* FIXME - Channel */
 	return cmd_obtain_variable(event, CONTROL_VAR_MUTE, "CurrentMute");
 }
 
-static void set_mute_toggle(int do_mute) {
-	replace_var(CONTROL_VAR_MUTE, do_mute ? "1" : "0");
-	output_set_mute(do_mute);
+void upnp_control_set_mute(int value){
+	service_lock();
+	replace_var(CONTROL_VAR_MUTE, value ? "1" : "0");
+	output_set_mute(value);
+	service_unlock();
 }
 
 static int set_mute(struct action_event *event) {
 	const char *value = upnp_get_string(event, "DesiredMute");
-	service_lock();
+	if(!value)
+		return -1;
 	const int do_mute = atoi(value);
-	set_mute_toggle(do_mute);
-	//replace_var(CONTROL_VAR_MUTE, do_mute ? "1" : "0");
-	service_unlock();
+	free(value);
+	upnp_control_set_mute(do_mute);
 	return 0;
 }
 
 static int get_volume(struct action_event *event)
 {
-	/* FIXME - Channel */
 	return cmd_obtain_variable(event, CONTROL_VAR_VOLUME, "CurrentVolume");
 }
 
-static int set_volume(struct action_event *event) {
-	const char *volume = upnp_get_string(event, "DesiredVolume");
+void upnp_control_set_volume(int value){
 	service_lock();
-	int volume_level = atoi(volume);
-	if (volume_level < volume_range.min) volume_level = volume_range.min;
-	if (volume_level > volume_range.max) volume_level = volume_range.max;
-	replace_var(CONTROL_VAR_VOLUME, volume);
-	output_set_volume(volume_level);
+	if (value < volume_range.min) value = volume_range.min;
+	if (value > volume_range.max) value = volume_range.max;
+	char vol[32];
+	sprintf(vol, "%d", value);
+	replace_var(CONTROL_VAR_VOLUME, vol);
+	output_set_volume(value);
 	service_unlock();
+}
 
+static int set_volume(struct action_event *event) {
+	const char *value = upnp_get_string(event, "DesiredVolume");
+	if(!value)
+		return -1;
+	int volume = atoi(value);
+	free(value);
+	upnp_control_set_volume(volume);
 	return 0;
 }
 

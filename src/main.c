@@ -28,7 +28,6 @@
 #endif
 
 #include <assert.h>
-//#include <glib.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -72,10 +71,6 @@ static const char *uuid = "GMediaRender-1_0-000-000-002";
 #endif
 static const char *friendly_name = "silan";//PACKAGE_NAME;
 static const char *output = NULL;
-//static const char *pid_file = NULL;
-//static const char *log_file = NULL;
-//static const char *log_file = "stdout";
-//static const char *log_file = "/var/log/renderer.log";
 
 static void log_variable_change(void *userdata, int var_num,
 				const char *variable_name,
@@ -95,24 +90,13 @@ int main(int argc, char **argv)
 {
 	int rc;
 	struct upnp_device_descriptor *upnp_renderer;
+	struct upnp_device *device;
 
-	if (show_connmgr_scpd) {
-		upnp_renderer_dump_connmgr_scpd();
-		exit(EXIT_SUCCESS);
-	}
-	if (show_control_scpd) {
-		upnp_renderer_dump_control_scpd();
-		exit(EXIT_SUCCESS);
-	}
-	if (show_transport_scpd) {
-		upnp_renderer_dump_transport_scpd();
-		exit(EXIT_SUCCESS);
-	}
-	if (show_outputs) {
-		output_dump_modules();
-		exit(EXIT_SUCCESS);
-	}
-
+/*
+	upnp_renderer_dump_connmgr_scpd();
+	upnp_renderer_dump_control_scpd();
+	upnp_renderer_dump_transport_scpd();
+*/
 	Log_init("stdout");
 //	fprintf(stderr, "%s started [ gmediarender %s (libupnp-%s) ].\n", PACKAGE_STRING, GM_COMPILE_VERSION, UPNP_VERSION_STRING);
 
@@ -139,18 +123,6 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	struct upnp_device *device;
-	if (listen_port != 0 &&
-	    (listen_port < 49152 || listen_port > 65535)) {
-		// Somewhere obscure internally in libupnp, they clamp the
-		// port to be outside of the IANA range, so at least 49152.
-		// Instead of surprising the user by ignoring lower port
-		// numbers, complain loudly.
-		Log_error("main", "Parameter error: --port needs to be in "
-			  "range [49152..65535] (but was set to %d)",
-			  listen_port);
-		return EXIT_FAILURE;
-	}
 	device = upnp_device_init(upnp_renderer, ip_address, listen_port);
 	if (device == NULL) {
 		Log_error("main", "ERROR: Failed to initialize UPnP device");

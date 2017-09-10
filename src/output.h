@@ -33,7 +33,6 @@ enum PlayFeedback {
 typedef void (*output_transition_cb_t)(enum PlayFeedback);
 
 int output_init(const char *shortname);
-//int output_add_options(GOptionContext *ctx);
 void output_dump_modules(void);
 
 int output_loop(void);
