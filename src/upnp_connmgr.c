@@ -322,27 +322,21 @@ static int prepare_for_connection(struct action_event *event) {
 	return 0;
 }
 
-static int get_current_conn_info(struct action_event *event)
-{
-	char *value = upnp_get_string(event, "ConnectionID");
-	if (value == NULL) {
+static int get_current_conn_info(struct action_event *event) {
+	const char *value = upnp_get_string(event, "ConnectionID");
+	if(value == NULL)
 		return -1;
-	}
 	Log_info("connmgr", "Query ConnectionID='%s'", value);
-	free(value);  // we don't actually do anything with it.
 
 	upnp_append_variable(event, CONNMGR_VAR_AAT_RCS_ID, "RcsID");
 	upnp_append_variable(event, CONNMGR_VAR_AAT_AVT_ID, "AVTransportID");
-	upnp_append_variable(event, CONNMGR_VAR_AAT_PROTO_INFO,
-			     "ProtocolInfo");
-	upnp_append_variable(event, CONNMGR_VAR_AAT_CONN_MGR,
-			     "PeerConnectionManager");
+	upnp_append_variable(event, CONNMGR_VAR_AAT_PROTO_INFO, "ProtocolInfo");
+	upnp_append_variable(event, CONNMGR_VAR_AAT_CONN_MGR, "PeerConnectionManager");
 	upnp_append_variable(event, CONNMGR_VAR_AAT_CONN_ID, "PeerConnectionID");
 	upnp_append_variable(event, CONNMGR_VAR_AAT_DIR, "Direction");
 	upnp_append_variable(event, CONNMGR_VAR_AAT_CONN_STATUS, "Status");
 	return 0;
 }
-
 
 struct service *upnp_connmgr_get_service(void) {
 	if (connmgr_service_.variable_container == NULL) {

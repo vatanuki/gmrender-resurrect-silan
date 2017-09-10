@@ -215,14 +215,11 @@ static void replace_var(control_variable_t varnum, const char *new_value) {
 
 static int cmd_obtain_variable(struct action_event *event,
 			 control_variable_t varnum,
-			 const char *paramname)
-{
-	char *instance = upnp_get_string(event, "InstanceID");
-	if (instance == NULL) {
+			 const char *paramname) {
+	const char *instance = upnp_get_string(event, "InstanceID");
+	if(instance == NULL)
 		return -1;
-	}
 	Log_info("control", "%s: %s for instance %s\n", __FUNCTION__, paramname, instance);
-	free(instance); // we don't care about that value for now.
 
 	upnp_append_variable(event, varnum, paramname);
 	return 0;
@@ -233,52 +230,42 @@ static int list_presets(struct action_event *event)
 	return cmd_obtain_variable(event, CONTROL_VAR_PRESET_NAME_LIST, "CurrentPresetNameList");
 }
 
-static int get_mute(struct action_event *event)
-{
+static int get_mute(struct action_event *event) {
 	return cmd_obtain_variable(event, CONTROL_VAR_MUTE, "CurrentMute");
 }
 
-void upnp_control_set_mute(int value){
+int upnp_control_set_mute(int value) {
 	service_lock();
 	replace_var(CONTROL_VAR_MUTE, value ? "1" : "0");
-	output_set_mute(value);
+	int rc = output_set_mute(value);
 	service_unlock();
+	return rc;
 }
 
 static int set_mute(struct action_event *event) {
 	const char *value = upnp_get_string(event, "DesiredMute");
-	if(!value)
-		return -1;
-	const int do_mute = atoi(value);
-	free(value);
-	upnp_control_set_mute(do_mute);
-	return 0;
+	return value == NULL ? -1 : upnp_control_set_mute(atoi(value));
 }
 
-static int get_volume(struct action_event *event)
-{
+static int get_volume(struct action_event *event) {
 	return cmd_obtain_variable(event, CONTROL_VAR_VOLUME, "CurrentVolume");
 }
 
-void upnp_control_set_volume(int value){
+int upnp_control_set_volume(int value) {
 	service_lock();
 	if (value < volume_range.min) value = volume_range.min;
 	if (value > volume_range.max) value = volume_range.max;
 	char vol[32];
-	sprintf(vol, "%d", value);
+	snprintf(vol, sizeof(vol), "%d", value);
 	replace_var(CONTROL_VAR_VOLUME, vol);
-	output_set_volume(value);
+	int rc = output_set_volume(value);
 	service_unlock();
+	return rc;
 }
 
 static int set_volume(struct action_event *event) {
 	const char *value = upnp_get_string(event, "DesiredVolume");
-	if(!value)
-		return -1;
-	int volume = atoi(value);
-	free(value);
-	upnp_control_set_volume(volume);
-	return 0;
+	return value == NULL ? -1 : upnp_control_set_volume(atoi(value));
 }
 
 static struct action control_actions[] = {
@@ -311,7 +298,7 @@ void upnp_control_init(struct upnp_device *device) {
 		Log_info("control", "Output inital volume is %d; setting "
 			 "control variables accordingly.", volume);
 		char vol[32];
-		sprintf(vol, "%d", volume);
+		snprintf(vol, sizeof(vol), "%d", volume);
 		replace_var(CONTROL_VAR_VOLUME, vol);
 	}
 
@@ -321,7 +308,7 @@ void upnp_control_init(struct upnp_device *device) {
 		Log_info("control", "Output inital mute is %d; setting "
 			 "control variables accordingly.", mute);
 		char var[32];
-		sprintf(var, "%d", mute);
+		snprintf(var, sizeof(var), "%d", mute);
 		replace_var(CONTROL_VAR_MUTE, var);
 	}
 
