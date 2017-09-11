@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <linux/input.h>
 
 #include <sys/stat.h>
 #include <sys/ioctl.h>
@@ -28,6 +29,7 @@
 #include "swa_gpio_api.h"
 
 static output_transition_cb_t play_trans_callback = NULL;
+static int output_silan_send_cmd(char cmd, int param, const char *data);
 
 struct swa_ipc_msg{
 	long type;
@@ -38,6 +40,7 @@ struct swa_ipc_msg{
 static struct {
 	int state;
 	int status;
+	int input_fd;
 	int gpio_fd;
 	int send_id;
 	int recv_id;
@@ -61,17 +64,52 @@ static int output_silan_gpio_write(int num, int value){
 }
 
 static int output_silan_loop(void){
-	int btn1, btn2;
+	struct input_event ev;
 
+	while(1){
+		if(silan_data.input_fd >= 0 && read(silan_data.input_fd, &ev, sizeof(ev)) == sizeof(ev)){
+			Log_info("silan_loop", "type: %d, code: %d, value: %d\n", ev.type, ev.code, ev.value);
+
+			if(ev.type != EV_KEY || ev.value != 1)
+				continue;
+
+			switch(ev.code){
+				case KEY_RADIO:
+					output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
+					output_silan_send_cmd(CMD_SetPadMux, silan_data.padmux, NULL);
+					Log_info("silan_ir", "set spdif-in %d\n", silan_data.padmux);
+					break;
+
+				case KEY_VOLUMEUP:
+					if(silan_data.volume < 100)
+						upnp_control_set_volume(++silan_data.volume);
+					Log_info("silan_ir", "set volume %d\n", silan_data.volume);
+					break;
+
+				case KEY_VOLUMEDOWN:
+					if(silan_data.volume > 0)
+						upnp_control_set_volume(--silan_data.volume);
+					Log_info("silan_ir", "set volume %d\n", silan_data.volume);
+					break;
+
+				case KEY_MUTE:
+					upnp_control_set_mute(!silan_data.mute);
+					Log_info("silan_ir", "set mute %d\n", silan_data.mute ? 0 : 1);
+					break;
+			}
+		}else
+			sleep(1000);
+	};
+/*
 	while(1){
 		btn1 = output_silan_gpio_read(GPIO_BTN1);
 		btn2 = output_silan_gpio_read(GPIO_BTN2);
 		if(!btn1 || !btn2)
 			Log_info("silan_loop", "buttons: %d, %d\n", btn1, btn2);
-//upnp_control_set_volume(10);
+upnp_control_set_volume(10);
 		usleep(100000);
 	}
-
+*/
 	return 0;
 }
 
@@ -217,6 +255,8 @@ static int output_silan_init(void){
 	gd.num = GPIO_LED1; ioctl(silan_data.gpio_fd, GPIO_IOCTL_SET_OUT, &gd);
 	gd.num = GPIO_LED2; ioctl(silan_data.gpio_fd, GPIO_IOCTL_SET_OUT, &gd);
 	gd.num = GPIO_LED3; ioctl(silan_data.gpio_fd, GPIO_IOCTL_SET_OUT, &gd);
+
+	silan_data.input_fd = open("/dev/input/event0", O_RDONLY);
 
 	silan_data.send_id = msgget(SWA_SIGNAL_SLMP, IPC_CREAT | 0666);
 	assert(silan_data.send_id >= 0);
