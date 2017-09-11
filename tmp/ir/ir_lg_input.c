@@ -12,7 +12,7 @@
 #include <linux/init.h>
 
 //#define DEBUG_IR_LG_BUF
-#define DEBUG_IR_LG_CODE
+//#define DEBUG_IR_LG_CODE
 
 #define IR_LG_DEV_NAME     "sl-ir-lg"
 
@@ -294,6 +294,7 @@ static irqreturn_t ir_isr(int irq, void *dev_id)
 #ifdef DEBUG_IR_LG_CODE
 		printk(IR_LG_DEV_NAME ": [DEFAULT] w: %d, i: %d, 0x%08X\n", width, priv->idx, priv->data);
 #endif
+		break;
 	}
 
 	return IRQ_HANDLED;
