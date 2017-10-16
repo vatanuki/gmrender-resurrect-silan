@@ -81,6 +81,10 @@ static void log_variable_change(void *userdata, int var_num,
 	// Silly terminal codes. Set to empty strings if not needed.
 	const char *var_start = Log_color_allowed() ? "\033[1m\033[34m" : "";
 	const char *var_end = Log_color_allowed() ? "\033[0m" : "";
+#if 1
+if(!strcmp(variable_name, "LastChange"))
+return;
+#endif
 	Log_info(category, "%s%s%s: %s%s",
 		 var_start, variable_name, var_end,
 		 variable_value, needs_newline ? "\n" : "");

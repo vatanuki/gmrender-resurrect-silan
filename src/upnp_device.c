@@ -200,7 +200,9 @@ static int handle_subscription_request(struct upnp_device *priv,
 	}
 	ithread_mutex_unlock(srv->service_mutex);
 	char *xml_value = UPnPLastChangeBuilder_to_xml(builder);
+#if 0
 	Log_info("upnp", "Initial variable sync: %s", xml_value);
+#endif
 	eventvar_values[0] = xmlescape(xml_value, 0);
 	free(xml_value);
 	UPnPLastChangeBuilder_delete(builder);

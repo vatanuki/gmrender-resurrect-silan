@@ -19,6 +19,7 @@
 #include <sys/ipc.h>
 #include <fcntl.h>
 #include <ctype.h>
+#include <sys/select.h>
 
 #include "logging.h"
 #include "upnp_control.h"
@@ -30,6 +31,8 @@
 
 static output_transition_cb_t play_trans_callback = NULL;
 static int output_silan_send_cmd(char cmd, int param, const char *data);
+static void output_silan_set_amp_mute(int m);
+extern char *strcasestr(const char *, const char *);
 
 struct swa_ipc_msg{
 	long type;
@@ -63,12 +66,46 @@ static int output_silan_gpio_write(int num, int value){
 	return ioctl(silan_data.gpio_fd, GPIO_IOCTL_WRITE, &gd);
 }
 
+static int output_silan_check_spdifin(int padmux, int count, int threshold){
+	struct gpio_data_t gd = {GPIO_SPDIF_IN0 + padmux, 1};
+	int value = 1;
+
+	while(count-- > 0){
+		ioctl(silan_data.gpio_fd, GPIO_IOCTL_READ, &gd);
+		if(value != gd.value && threshold-- <= 0){
+#ifdef SILAN_SIGNAL_LOGGING
+			Log_info("silan_spdifin", "signal @ %d",count);
+#endif
+			return 1;
+		}
+		value = gd.value;
+	}
+
+#ifdef SILAN_SIGNAL_LOGGING
+	Log_info("silan_spdifin", "no signal @ %d", threshold);
+#endif
+	return 0;
+}
+
 static int output_silan_loop(void){
+	int cnt = 0;
+	fd_set set;
+	struct timeval to;
 	struct input_event ev;
 
 	while(1){
-		if(silan_data.input_fd >= 0 && read(silan_data.input_fd, &ev, sizeof(ev)) == sizeof(ev)){
-			Log_info("silan_loop", "type: %d, code: %d, value: %d\n", ev.type, ev.code, ev.value);
+		to.tv_sec = 1;//60;
+		to.tv_usec = 0;
+
+		if(silan_data.input_fd >= 0){
+			FD_ZERO(&set);
+			FD_SET(silan_data.input_fd, &set);
+		}
+
+		if(silan_data.input_fd >= 0 && select(silan_data.input_fd + 1, &set, NULL, NULL, &to) > 0 && read(silan_data.input_fd, &ev, sizeof(ev)) == sizeof(ev)){
+#ifdef SILAN_IR_LOGGING
+			Log_info("silan_ir", "type: %d, code: %d, value: %d", ev.type, ev.code, ev.value);
+#endif
 
 			if(ev.type != EV_KEY || ev.value != 1)
 				continue;
@@ -77,44 +114,77 @@ static int output_silan_loop(void){
 				case KEY_RADIO:
 					output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
 					output_silan_send_cmd(CMD_SetPadMux, silan_data.padmux, NULL);
-					Log_info("silan_ir", "set spdif-in %d\n", silan_data.padmux);
+#ifdef SILAN_IR_LOGGING
+					Log_info("silan_ir", "set spdifin %d", silan_data.padmux);
+#endif
 					break;
 
 				case KEY_VOLUMEUP:
 					if(silan_data.volume < 100)
 						upnp_control_set_volume(++silan_data.volume);
-					Log_info("silan_ir", "set volume %d\n", silan_data.volume);
+#ifdef SILAN_IR_LOGGING
+					Log_info("silan_ir", "set volume %d", silan_data.volume);
+#endif
 					break;
 
 				case KEY_VOLUMEDOWN:
 					if(silan_data.volume > 0)
 						upnp_control_set_volume(--silan_data.volume);
-					Log_info("silan_ir", "set volume %d\n", silan_data.volume);
+#ifdef SILAN_IR_LOGGING
+					Log_info("silan_ir", "set volume %d", silan_data.volume);
+#endif
 					break;
 
 				case KEY_MUTE:
 					upnp_control_set_mute(!silan_data.mute);
-					Log_info("silan_ir", "set mute %d\n", silan_data.mute ? 0 : 1);
+#ifdef SILAN_IR_LOGGING
+					Log_info("silan_ir", "set mute %d", silan_data.mute ? 0 : 1);
+#endif
 					break;
 			}
-		}else
-			sleep(1000);
-	};
-/*
+		}else{
+			if(silan_data.input_fd < 0)
+				sleep(to.tv_sec);
+#if 0
+			if(!output_silan_check_spdifin(silan_data.padmux, 200, 10)){
+				if(cnt < SILAN_AUTO_POWER_OFF){
+					cnt++;
+				}else if(cnt == SILAN_AUTO_POWER_OFF){
+					output_silan_set_amp_mute(1);
+					output_silan_gpio_write(GPIO_AMP_POWER, 1);
+					Log_info("silan_wd", "auto power off @ %d", cnt);
+					cnt++;
+				}
+			}else{
+				if(cnt >= SILAN_AUTO_POWER_OFF){
+					output_silan_set_amp_mute(1);
+					output_silan_gpio_write(GPIO_AMP_POWER, 0);
+					sleep(1);
+					output_silan_set_amp_mute(0);
+					Log_info("silan_wd", "auto power on @ %d", cnt);
+				}
+				cnt = 0;
+			}
+#endif
+		}
+	}
+
+#if 0
 	while(1){
 		btn1 = output_silan_gpio_read(GPIO_BTN1);
 		btn2 = output_silan_gpio_read(GPIO_BTN2);
 		if(!btn1 || !btn2)
-			Log_info("silan_loop", "buttons: %d, %d\n", btn1, btn2);
-upnp_control_set_volume(10);
+			Log_info("silan_loop", "buttons: %d, %d", btn1, btn2);
 		usleep(100000);
 	}
-*/
+#endif
+
 	return 0;
 }
 
 static int output_silan_send_cmd(char cmd, int param, const char *data){
-	int bit, cnt;
+	int bit = 0, cnt;
+	const char *cmd_str = NULL;
 	struct swa_ipc_msg msg;
 
 	msg.ipc_data.src = SWA_SIGNAL_UI;
@@ -128,10 +198,52 @@ static int output_silan_send_cmd(char cmd, int param, const char *data){
 		msg.ipc_data.data[0] = '\0';
 
 	msg.type = msg.ipc_data.src;
-	memset(&msg.ipc, 0, IPC_NUM);
+	memset(msg.ipc, 0, IPC_NUM);
 
 #ifdef SILAN_IPC_LOGGING
-	Log_info("silan_send_cmd", "cmd: %d, param: %d, data: %s\n", msg.ipc_data.cmd, msg.ipc_data.param, msg.ipc_data.data);
+	switch(cmd){
+		case CMD_SlmpGetMute:
+			cmd_str = "CMD_SlmpGetMute";
+			break;
+		case CMD_SlmpGetVolume:
+			cmd_str = "CMD_SlmpGetVolume";
+			break;
+		case CMD_SlmpGetTimePos:
+			cmd_str = "CMD_SlmpGetTimePos";
+			break;
+		case CMD_DmrGetTotalTime:
+			cmd_str = "CMD_DmrGetTotalTime";
+			break;
+		case CMD_SpdifIn:
+			cmd_str = "CMD_SpdifIn";
+			break;
+		case CMD_SetPadMux:
+			cmd_str = "CMD_SetPadMux";
+			break;
+		case CMD_SlmpPlayUri:
+			cmd_str = "CMD_SlmpPlayUri";
+			break;
+		case CMD_SlmpPause:
+			cmd_str = "CMD_SlmpPause";
+			break;
+		case CMD_SlmpStop:
+			cmd_str = "CMD_SlmpStop";
+			break;
+		case CMD_SlmpSeek:
+			cmd_str = "CMD_SlmpSeek";
+			break;
+		case CMD_SlmpMute:
+			cmd_str = "CMD_SlmpMute";
+			break;
+		case CMD_SlmpSetVolume:
+			cmd_str = "CMD_SlmpSetVolume";
+			break;
+		default:
+			cmd_str = "CMD_UNKNOWN";
+			break;
+	}
+
+	Log_info("silan-send", "%s (%d) param: %d, data: %s", cmd_str, msg.ipc_data.cmd, msg.ipc_data.param, msg.ipc_data.data);
 #endif
 
 	switch(cmd){
@@ -147,8 +259,6 @@ static int output_silan_send_cmd(char cmd, int param, const char *data){
 		case CMD_DmrGetTotalTime:
 			bit = SILAN_DATA_DURATION;
 			break;
-		default:
-			bit = 0;
 	}
 
 	silan_data.status|= bit;
@@ -159,7 +269,7 @@ static int output_silan_send_cmd(char cmd, int param, const char *data){
 	while((silan_data.status & bit) && cnt < SILAN_RECV_RETRY){
 		cnt++;
 #ifdef SILAN_IPC_LOGGING
-		Log_info("silan_send_cmd", "waiting cmd (%d) data to be ready (%d)", cmd, cnt);
+		Log_info("silan-send", "waiting %s (%d) data to be ready (%d)", cmd_str, cmd, cnt);
 #endif
 		usleep(SILAN_RECV_TOUT);
 	}
@@ -169,6 +279,7 @@ static int output_silan_send_cmd(char cmd, int param, const char *data){
 
 static void *output_silan_recv_cmd(void *argv){
 	struct swa_ipc_msg msg;
+	const char *cmd_str = NULL;
 
 	while(1){
 		if(msgrcv(silan_data.recv_id, &msg, sizeof(msg), 0, 0) < 0){
@@ -177,16 +288,71 @@ static void *output_silan_recv_cmd(void *argv){
 			continue;
 		}
 
-		if(msg.ipc_data.des == SWA_SIGNAL_APK){
 #ifdef SILAN_IPC_LOGGING
-			Log_info("silan_recv_cmd", "[SKIP] dst: %d, cmd: %d, param: %d, data: %s", msg.ipc_data.des, msg.ipc_data.cmd, msg.ipc_data.param, msg.ipc_data.data);
-#endif
-			continue;
+		switch(msg.ipc_data.cmd){
+			case CMD_SlmpGetMute:
+				cmd_str = "CMD_SlmpGetMute";
+				break;
+			case CMD_SlmpGetVolume:
+				cmd_str = "CMD_SlmpGetVolume";
+				break;
+			case CMD_SlmpSetTimePos:
+				cmd_str = "CMD_SlmpSetTimePos";
+				break;
+			case CMD_SlmpSetTotalTime:
+				cmd_str = "CMD_DmrSetTotalTime";
+				break;
+			case CMD_SlmpPlayState:
+				cmd_str = "CMD_SlmpPlayState";
+				break;
+			case CMD_SlmpPcmInfo:
+				cmd_str = "CMD_SlmpPcmInfo";
+				break;
+			case CMD_SpdInBegM:
+				cmd_str = "CMD_SpdInBegM";
+				break;
+			default:
+				cmd_str = "CMD_UNKNOWN";
+				break;
 		}
 
-#ifdef SILAN_IPC_LOGGING
-		Log_info("silan_recv_cmd", "dst: %d, cmd: %d, param: %d, data: %s", msg.ipc_data.des, msg.ipc_data.cmd, msg.ipc_data.param, msg.ipc_data.data);
+		if(msg.ipc_data.cmd == CMD_SlmpPlayState){
+			switch(msg.ipc_data.param){
+				case 0:
+					cmd_str = "CMD_SlmpPlayState - STOP";
+					break;
+				case 1:
+					cmd_str = "CMD_SlmpPlayState - PAUSE";
+					break;
+				case 2:
+					cmd_str = "CMD_SlmpPlayState - PLAY";
+					break;
+				case 3:
+					cmd_str = "CMD_SlmpPlayState - DMR STOP";
+					break;
+				case 4:
+					cmd_str = "CMD_SlmpPlayState - DMR PAUSE";
+					break;
+				case 5:
+					cmd_str = "CMD_SlmpPlayState - DMR PLAY";
+					break;
+				case 6:
+					cmd_str = "CMD_SlmpPlayState - FINISH";
+					break;
+				case 8:
+					cmd_str = "CMD_SlmpPlayState - NEXT";
+					break;
+				case 9:
+					cmd_str = "CMD_SlmpPlayState - PREV";
+					break;
+			}
+		}
+
+		Log_info("silan-recv", "%s (%d) dst: %d, param: %d, data: %s", cmd_str, msg.ipc_data.cmd, msg.ipc_data.des, msg.ipc_data.param, msg.ipc_data.data);
 #endif
+
+		if(msg.ipc_data.des != SWA_SIGNAL_UI)
+			continue;
 
 		switch(msg.ipc_data.cmd){
 			case CMD_SlmpGetMute:
@@ -212,7 +378,7 @@ static void *output_silan_recv_cmd(void *argv){
 			case CMD_SlmpPlayState:
 				silan_data.state = msg.ipc_data.param;
 
-				if(silan_data.state == SLMP_STATE_STOP && (silan_data.status & SILAN_DATA_PLAYING)){
+				if(silan_data.state == SLMP_STATE_STOP && silan_data.duration && silan_data.position == silan_data.duration){
 					Log_info("silan", "End-of-stream");
 
 					if(silan_data.uri_next){
@@ -227,11 +393,13 @@ static void *output_silan_recv_cmd(void *argv){
 							play_trans_callback(PLAY_STARTED_NEXT_STREAM);
 
 					}else if(play_trans_callback){
-						silan_data.status&= ~SILAN_DATA_PLAYING;
 						play_trans_callback(PLAY_STOPPED);
+						output_silan_send_cmd(CMD_SetPadMux, silan_data.padmux, NULL);
 						output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
 					}
 				}
+
+				output_silan_set_amp_mute(silan_data.state != SLMP_STATE_PLAY);
 
 				break;
 		}
@@ -240,7 +408,30 @@ static void *output_silan_recv_cmd(void *argv){
 	return 0;
 }
 
+static char *output_silan_read_file(const char *fname){
+	FILE *fd;
+	struct stat fs;
+	char *buf = NULL;
+
+	fd = fopen(fname, "r");
+	if(fd < 0)
+		return NULL;
+
+	if(stat(fname, &fs) == 0 && fs.st_size > 0 && (buf=malloc(fs.st_size+1))){
+		buf[fs.st_size] = '\0';
+		if(fread(buf, fs.st_size, 1, fd) != 1){
+			free(buf);
+			buf = NULL;
+		}
+	}
+
+	fclose(fd);
+
+	return buf;
+}
+
 static int output_silan_init(void){
+	char *buf, *pos;
 	struct gpio_data_t gd;
 
 	silan_data.gpio_fd = open(DLNA_GPIO_NAME, O_RDONLY);
@@ -256,7 +447,42 @@ static int output_silan_init(void){
 	gd.num = GPIO_LED2; ioctl(silan_data.gpio_fd, GPIO_IOCTL_SET_OUT, &gd);
 	gd.num = GPIO_LED3; ioctl(silan_data.gpio_fd, GPIO_IOCTL_SET_OUT, &gd);
 
-	silan_data.input_fd = open("/dev/input/event0", O_RDONLY);
+	silan_data.state = SLMP_STATE_STOP;
+	silan_data.status = 0;
+	silan_data.uri = NULL;
+	silan_data.uri_next = NULL;
+	silan_data.mute = 0;
+	silan_data.volume = 0;
+	silan_data.duration = 0;
+	silan_data.position = 0;
+	silan_data.padmux = 0;
+
+	buf = output_silan_read_file(SILAN_FNAME_DB_SLMP);
+	if(buf){
+		pos = strcasestr(buf, SILAN_SLMP_KEY_PADMUX);
+		if(pos != NULL){
+			silan_data.padmux = atoi(pos + sizeof(SILAN_SLMP_KEY_PADMUX) - 1);
+			Log_info("silan-init", "padmux=%d", silan_data.padmux);
+		}
+		free(buf);
+	}
+
+	buf = output_silan_read_file(SILAN_FNAME_DB_SYSTEM);
+	if(buf){
+		pos = strcasestr(buf, SILAN_SYSTEM_KEY_VOLUME);
+		if(pos != NULL){
+			silan_data.volume = atoi(pos + sizeof(SILAN_SYSTEM_KEY_VOLUME) - 1);
+			Log_info("silan-init", "volume=%d", silan_data.volume);
+		}
+		pos = strcasestr(buf, SILAN_SYSTEM_KEY_MUTE);
+		if(pos != NULL){
+			silan_data.mute = atoi(pos + sizeof(SILAN_SYSTEM_KEY_MUTE) - 1);
+			Log_info("silan-init", "mute=%d", silan_data.mute);
+		}
+		free(buf);
+	}
+
+	silan_data.input_fd = open(SILAN_FNAME_IR_INPUT, O_RDONLY);
 
 	silan_data.send_id = msgget(SWA_SIGNAL_SLMP, IPC_CREAT | 0666);
 	assert(silan_data.send_id >= 0);
@@ -267,22 +493,16 @@ static int output_silan_init(void){
 	pthread_t thread;
 	pthread_create(&thread, NULL, output_silan_recv_cmd, NULL);
 
-	silan_data.state = SLMP_STATE_STOP;
-	silan_data.status = 0;
-	silan_data.uri = NULL;
-	silan_data.uri_next = NULL;
-	silan_data.mute = 0;
-	silan_data.volume = 0;
-	silan_data.duration = 0;
-	silan_data.position = 0;
-	silan_data.padmux = 1;
+	output_silan_send_cmd(CMD_SetPadMux, silan_data.padmux, NULL);
+	output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
 
-	//output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
-	//output_silan_send_cmd(CMD_SetPadMux, silan_data.padmux, NULL);
+	//power on amp
+	output_silan_set_amp_mute(1);
+	output_silan_gpio_write(GPIO_AMP_POWER, 0);
 
 	register_mime_type("audio/*");
 
-	Log_info("silan", "init done");
+	Log_info("silan-init", "done");
 
 	return 0;
 }
@@ -309,7 +529,6 @@ static int output_silan_play(output_transition_cb_t callback) {
 	Log_info("silan", "play");
 
 	play_trans_callback = callback;
-	silan_data.status|= SILAN_DATA_PLAYING;
 
 	if(silan_data.uri){
 		silan_data.duration = 0;
@@ -332,10 +551,9 @@ static int output_silan_play(output_transition_cb_t callback) {
 static int output_silan_stop(void) {
 	Log_info("silan", "stop");
 
-	silan_data.status&= ~SILAN_DATA_PLAYING;
 	output_silan_send_cmd(CMD_SlmpStop, 0, NULL);
+	output_silan_send_cmd(CMD_SetPadMux, silan_data.padmux, NULL);
 	output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
-	//output_silan_send_cmd(CMD_SetPadMux, silan_data.padmux, NULL);
 
 	return 0;
 }
@@ -362,10 +580,12 @@ static int output_silan_get_position(int *track_dur, int *track_pos) {
 }
 
 static int output_silan_get_volume(int *v) {
+#if 0
 	if(output_silan_send_cmd(CMD_SlmpGetVolume, 0, NULL) < 0){
 		Log_error("silan", "CMD_SlmpGetVolume");
 		return -1;
 	}
+#endif
 
 	*v = silan_data.volume;
 
@@ -381,10 +601,12 @@ static int output_silan_set_volume(int v) {
 }
 
 static int output_silan_get_mute(int *m) {
+#if 0
 	if(output_silan_send_cmd(CMD_SlmpGetMute, 0, NULL) < 0){
 		Log_error("silan", "CMD_SlmpGetMute");
 		return -1;
 	}
+#endif
 
 	*m = silan_data.mute;
 	Log_info("silan", "Get mute: %s", *m ? "on" : "off");
@@ -398,6 +620,12 @@ static int output_silan_set_mute(int m) {
 		res = output_silan_send_cmd(CMD_SlmpMute, m, NULL);
 	silan_data.mute = m;
 	return res;
+}
+
+static void output_silan_set_amp_mute(int m) {
+	Log_info("silan", "Set AMP mute to %s", m ? "on" : "off");
+	output_silan_gpio_write(GPIO_AMP_MUTE, m);
+	//output_silan_gpio_write(GPIO_MUTE, !m);
 }
 
 struct output_module silan_output = {
