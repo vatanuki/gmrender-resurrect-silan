@@ -29,15 +29,25 @@
 #include "swa_msg_api.h"
 #include "swa_gpio_api.h"
 
-static output_transition_cb_t play_trans_callback = NULL;
+static output_transition_cb_t trans_callback = NULL;
 static int output_silan_send_cmd(char cmd, int param, const char *data);
+static void output_silan_set_spdifin(void);
 static void output_silan_set_amp_mute(int m);
+static void output_silan_set_line_mute(int m);
+static void output_silan_set_amp_power(int m);
 extern char *strcasestr(const char *, const char *);
 
 struct swa_ipc_msg{
 	long type;
 	struct swa_ipc_data ipc_data;
 	char ipc[IPC_NUM];
+};
+
+struct spdifin_status_info{
+	int lock;
+	int rate;
+	int rawdata;
+	int set_padmux;
 };
 
 static struct {
@@ -56,16 +66,50 @@ static struct {
 	int padmux;
 } silan_data;
 
+#if 0
 static int output_silan_gpio_read(int num){
 	struct gpio_data_t gd = {num, -2};
 	return ioctl(silan_data.gpio_fd, GPIO_IOCTL_READ, &gd) < 0 ? -3 : gd.value;
 }
+#endif
 
 static int output_silan_gpio_write(int num, int value){
 	struct gpio_data_t gd = {num, value};
 	return ioctl(silan_data.gpio_fd, GPIO_IOCTL_WRITE, &gd);
 }
 
+static int output_silan_spdifin_info(struct spdifin_status_info *info){
+	int fd = open(SILAN_FNAME_SPDIF_IN_INFO, O_RDONLY);
+	fd_set set;
+	struct timeval to;
+
+	if(fd < 0){
+		Log_error("silan_spdifin", "failed to open %s | %s", SILAN_FNAME_SPDIF_IN_INFO, strerror(errno));
+		return -1;
+	}
+
+	to.tv_sec = 0;
+	to.tv_usec = 500;
+
+	FD_ZERO(&set);
+	FD_SET(fd, &set);
+
+	if(select(fd + 1, &set, NULL, NULL, &to) > 0 && read(fd, info, sizeof(struct spdifin_status_info)) == sizeof(struct spdifin_status_info)){
+#ifdef SILAN_DEBUG
+		Log_info("silan_spdifin", "info: padmux=%d, lock=%d, rate=%d, rawdata=0x%08x", info->set_padmux, info->lock, info->rate, info->rawdata);
+#endif
+		close(fd);
+		return 0;
+
+	}else{
+		Log_error("silan_spdifin", "failed to read %s | %s", SILAN_FNAME_SPDIF_IN_INFO, strerror(errno));
+	}
+
+	close(fd);
+	return -1;
+}
+
+#if 0
 static int output_silan_check_spdifin(int padmux, int count, int threshold){
 	struct gpio_data_t gd = {GPIO_SPDIF_IN0 + padmux, 1};
 	int value = 1;
@@ -86,15 +130,27 @@ static int output_silan_check_spdifin(int padmux, int count, int threshold){
 #endif
 	return 0;
 }
+#endif
+
+static void output_silan_volume_change(int dir){
+	if(silan_data.volume > 50) dir*= 5;
+	else if(silan_data.volume > 20) dir*= 4;
+	else if(silan_data.volume > 10) dir*= 2;
+	silan_data.volume+= dir;
+	if(silan_data.volume < 0) silan_data.volume = 0;
+	if(silan_data.volume > 100) silan_data.volume = 100;
+	upnp_control_set_volume(silan_data.volume);
+}
 
 static int output_silan_loop(void){
-	int cnt = 0;
+	int cnt_stop = 0, cnt_unlock = 0, cnt_mute = 0;
 	fd_set set;
 	struct timeval to;
 	struct input_event ev;
+	struct spdifin_status_info info;
 
 	while(1){
-		to.tv_sec = 1;//60;
+		to.tv_sec = 1;
 		to.tv_usec = 0;
 
 		if(silan_data.input_fd >= 0){
@@ -112,16 +168,21 @@ static int output_silan_loop(void){
 
 			switch(ev.code){
 				case KEY_RADIO:
-					output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
-					output_silan_send_cmd(CMD_SetPadMux, silan_data.padmux, NULL);
+					output_silan_set_spdifin();
 #ifdef SILAN_IR_LOGGING
 					Log_info("silan_ir", "set spdifin %d", silan_data.padmux);
 #endif
+					if(trans_callback){
+#ifdef SILAN_IR_LOGGING
+						Log_info("silan_ir", "callback: STOPPED due SPDIFIN");
+#endif
+						trans_callback(PLAY_STOPPED);
+					}
 					break;
 
 				case KEY_VOLUMEUP:
 					if(silan_data.volume < 100)
-						upnp_control_set_volume(++silan_data.volume);
+						output_silan_volume_change(+1);
 #ifdef SILAN_IR_LOGGING
 					Log_info("silan_ir", "set volume %d", silan_data.volume);
 #endif
@@ -129,7 +190,7 @@ static int output_silan_loop(void){
 
 				case KEY_VOLUMEDOWN:
 					if(silan_data.volume > 0)
-						upnp_control_set_volume(--silan_data.volume);
+						output_silan_volume_change(-1);
 #ifdef SILAN_IR_LOGGING
 					Log_info("silan_ir", "set volume %d", silan_data.volume);
 #endif
@@ -145,27 +206,51 @@ static int output_silan_loop(void){
 		}else{
 			if(silan_data.input_fd < 0)
 				sleep(to.tv_sec);
-#if 0
-			if(!output_silan_check_spdifin(silan_data.padmux, 200, 10)){
-				if(cnt < SILAN_AUTO_POWER_OFF){
-					cnt++;
-				}else if(cnt == SILAN_AUTO_POWER_OFF){
-					output_silan_set_amp_mute(1);
-					output_silan_gpio_write(GPIO_AMP_POWER, 1);
-					Log_info("silan_wd", "auto power off @ %d", cnt);
-					cnt++;
+
+			if(silan_data.status & SILAN_STATUS_SPDIFIN){
+				if(!output_silan_spdifin_info(&info) && info.lock){
+					cnt_unlock = 0;
+					if(!(silan_data.status & SILAN_STATUS_AMP_POWER)){
+						cnt_mute = 0;
+						output_silan_set_amp_power(1);
+					}
+
+				}else if(cnt_unlock < SILAN_AUTO_POWER_OFF){
+					cnt_unlock++;
+					Log_info("silan_wd", "no SPDIF IN @ %d", cnt_unlock);
+
+				}else if(cnt_unlock == SILAN_AUTO_POWER_OFF){
+					cnt_unlock++;
+					if(silan_data.status & SILAN_STATUS_AMP_POWER)
+						output_silan_set_amp_power(0);
 				}
 			}else{
-				if(cnt >= SILAN_AUTO_POWER_OFF){
-					output_silan_set_amp_mute(1);
-					output_silan_gpio_write(GPIO_AMP_POWER, 0);
-					sleep(1);
-					output_silan_set_amp_mute(0);
-					Log_info("silan_wd", "auto power on @ %d", cnt);
+				if(silan_data.state == SLMP_STATE_PLAY){
+					cnt_stop = 0;
+					if(!(silan_data.status & SILAN_STATUS_AMP_POWER)){
+						cnt_mute = 0;
+						output_silan_set_amp_power(1);
+					}
+
+				}else if(cnt_stop < SILAN_AUTO_SPDIFIN){
+					cnt_stop++;
+					Log_info("silan_wd", "not playing @ %d", cnt_stop);
+
+				}else if(cnt_stop == SILAN_AUTO_SPDIFIN){
+					cnt_stop++;
+					output_silan_set_spdifin();
 				}
-				cnt = 0;
 			}
-#endif
+
+			if((silan_data.status & (SILAN_STATUS_AMP_POWER|SILAN_STATUS_AMP_MUTE)) == (SILAN_STATUS_AMP_POWER|SILAN_STATUS_AMP_MUTE)){
+				if(cnt_mute < SILAN_AMP_UNMUTE){
+					cnt_mute++;
+					Log_info("silan_wd", "AMP still muted @ %d", cnt_mute);
+				}else if(cnt_mute == SILAN_AMP_UNMUTE){
+					cnt_mute++;
+					output_silan_set_amp_mute(0);
+				}
+			}
 		}
 	}
 
@@ -280,6 +365,10 @@ static int output_silan_send_cmd(char cmd, int param, const char *data){
 static void *output_silan_recv_cmd(void *argv){
 	struct swa_ipc_msg msg;
 	const char *cmd_str = NULL;
+#ifdef SILAN_DEBUG
+	int ipc_num_i;
+	char ipc_num_str[IPC_NUM*2+1];
+#endif
 
 	while(1){
 		if(msgrcv(silan_data.recv_id, &msg, sizeof(msg), 0, 0) < 0){
@@ -348,7 +437,15 @@ static void *output_silan_recv_cmd(void *argv){
 			}
 		}
 
+#ifndef SILAN_DEBUG
+		if(msg.ipc_data.des == SWA_SIGNAL_UI)
+#endif
 		Log_info("silan-recv", "%s (%d) dst: %d, param: %d, data: %s", cmd_str, msg.ipc_data.cmd, msg.ipc_data.des, msg.ipc_data.param, msg.ipc_data.data);
+#ifdef SILAN_DEBUG
+		for(ipc_num_i = 0; ipc_num_i < IPC_NUM; ipc_num_i++)
+			snprintf(&ipc_num_str[ipc_num_i * 2], 3, "%02x", msg.ipc[ipc_num_i]);
+		Log_info("silan-recv", "IPC NUM DEBUG: 0x%s", ipc_num_str);
+#endif
 #endif
 
 		if(msg.ipc_data.des != SWA_SIGNAL_UI)
@@ -389,17 +486,16 @@ static void *output_silan_recv_cmd(void *argv){
 
 						Log_info("silan", "play next uri %s", silan_data.uri);
 						output_silan_send_cmd(CMD_SlmpPlayUri, 0, silan_data.uri);
-						if(play_trans_callback)
-							play_trans_callback(PLAY_STARTED_NEXT_STREAM);
+						if(trans_callback){
+							Log_info("silan", "callback: NEXT STREAM");
+							trans_callback(PLAY_STARTED_NEXT_STREAM);
+						}
 
-					}else if(play_trans_callback){
-						play_trans_callback(PLAY_STOPPED);
-						output_silan_send_cmd(CMD_SetPadMux, silan_data.padmux, NULL);
-						output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
+					}else if(trans_callback){
+						Log_info("silan", "callback: STOPPED");
+						trans_callback(PLAY_STOPPED);
 					}
 				}
-
-				output_silan_set_amp_mute(silan_data.state != SLMP_STATE_PLAY);
 
 				break;
 		}
@@ -443,9 +539,9 @@ static int output_silan_init(void){
 
 	gd.value = 1;
 	gd.num = GPIO_MUTE; ioctl(silan_data.gpio_fd, GPIO_IOCTL_SET_OUT, &gd);
-	gd.num = GPIO_LED1; ioctl(silan_data.gpio_fd, GPIO_IOCTL_SET_OUT, &gd);
 	gd.num = GPIO_LED2; ioctl(silan_data.gpio_fd, GPIO_IOCTL_SET_OUT, &gd);
 	gd.num = GPIO_LED3; ioctl(silan_data.gpio_fd, GPIO_IOCTL_SET_OUT, &gd);
+	gd.num = GPIO_LED4; ioctl(silan_data.gpio_fd, GPIO_IOCTL_SET_OUT, &gd);
 
 	silan_data.state = SLMP_STATE_STOP;
 	silan_data.status = 0;
@@ -483,6 +579,8 @@ static int output_silan_init(void){
 	}
 
 	silan_data.input_fd = open(SILAN_FNAME_IR_INPUT, O_RDONLY);
+	if(silan_data.input_fd < 0)
+		Log_error("silan", "failed to open %s | %s", SILAN_FNAME_IR_INPUT, strerror(errno));
 
 	silan_data.send_id = msgget(SWA_SIGNAL_SLMP, IPC_CREAT | 0666);
 	assert(silan_data.send_id >= 0);
@@ -493,18 +591,23 @@ static int output_silan_init(void){
 	pthread_t thread;
 	pthread_create(&thread, NULL, output_silan_recv_cmd, NULL);
 
-	output_silan_send_cmd(CMD_SetPadMux, silan_data.padmux, NULL);
-	output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
-
-	//power on amp
-	output_silan_set_amp_mute(1);
-	output_silan_gpio_write(GPIO_AMP_POWER, 0);
+	output_silan_set_amp_power(1);
+	output_silan_set_spdifin();
 
 	register_mime_type("audio/*");
 
 	Log_info("silan-init", "done");
 
 	return 0;
+}
+
+static void output_silan_set_spdifin(void){
+	if(silan_data.status & SILAN_STATUS_SPDIFIN)
+		return;
+
+	silan_data.status|= SILAN_STATUS_SPDIFIN;
+	output_silan_send_cmd(CMD_SetPadMux, silan_data.padmux, NULL);
+	output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
 }
 
 static void output_silan_set_uri(const char *uri){
@@ -523,14 +626,13 @@ static void output_silan_set_next_uri(const char *uri) {
 	silan_data.uri_next = (uri && *uri) ? strdup(uri) : NULL;
 }
 
-static int output_silan_play(output_transition_cb_t callback) {
+static int output_silan_play(void) {
 	int res;
 
 	Log_info("silan", "play");
 
-	play_trans_callback = callback;
-
 	if(silan_data.uri){
+		silan_data.status&= ~SILAN_STATUS_SPDIFIN;
 		silan_data.duration = 0;
 		silan_data.position = 0;
 
@@ -550,12 +652,7 @@ static int output_silan_play(output_transition_cb_t callback) {
 
 static int output_silan_stop(void) {
 	Log_info("silan", "stop");
-
-	output_silan_send_cmd(CMD_SlmpStop, 0, NULL);
-	output_silan_send_cmd(CMD_SetPadMux, silan_data.padmux, NULL);
-	output_silan_send_cmd(CMD_SpdifIn, 0, NULL);
-
-	return 0;
+	return output_silan_send_cmd(CMD_SlmpStop, 0, NULL);
 }
 
 static int output_silan_pause(void) {
@@ -566,6 +663,10 @@ static int output_silan_pause(void) {
 static int output_silan_seek(int position) {
 	Log_info("silan", "seek position to %d seconds", position);
 	return output_silan_send_cmd(CMD_SlmpSeek, position, NULL);
+}
+
+static void output_silan_set_transport_callback(output_transition_cb_t callback){
+	trans_callback = callback;
 }
 
 static int output_silan_get_position(int *track_dur, int *track_pos) {
@@ -597,6 +698,7 @@ static int output_silan_set_volume(int v) {
 	Log_info("silan", "Set volume to %d", v);
 
 	silan_data.mute = 0;
+	silan_data.volume = v;
 	return output_silan_send_cmd(CMD_SlmpSetVolume, v, NULL);
 }
 
@@ -616,18 +718,39 @@ static int output_silan_get_mute(int *m) {
 static int output_silan_set_mute(int m) {
 	int res = 0;
 	Log_info("silan", "Set mute to %s", m ? "on" : "off");
-	if(!!m != !!silan_data.mute)
+	if(!m != !silan_data.mute)
 		res = output_silan_send_cmd(CMD_SlmpMute, m, NULL);
 	silan_data.mute = m;
 	return res;
 }
 
 static void output_silan_set_amp_mute(int m) {
+	if(!m != !(silan_data.status & SILAN_STATUS_AMP_MUTE))
+		output_silan_gpio_write(GPIO_AMP_MUTE, m);
+	if(m)
+		silan_data.status|= SILAN_STATUS_AMP_MUTE;
+	else
+		silan_data.status&= ~SILAN_STATUS_AMP_MUTE;
 	Log_info("silan", "Set AMP mute to %s", m ? "on" : "off");
-	output_silan_gpio_write(GPIO_AMP_MUTE, m);
-	//output_silan_gpio_write(GPIO_MUTE, !m);
 }
 
+static void output_silan_set_amp_power(int m) {
+	if(!m != !(silan_data.status & SILAN_STATUS_AMP_POWER)){
+		output_silan_set_amp_mute(1);
+		output_silan_gpio_write(GPIO_AMP_POWER, !m);
+	}
+	if(m)
+		silan_data.status|= SILAN_STATUS_AMP_POWER;
+	else
+		silan_data.status&= ~SILAN_STATUS_AMP_POWER;
+	Log_info("silan", "Set AMP Power to %s", m ? "on" : "off");
+}
+#if 0
+static void output_silan_set_line_mute(int m) {
+	Log_info("silan", "Set Line mute to %s", m ? "on" : "off");
+	output_silan_gpio_write(GPIO_MUTE, !m);
+}
+#endif
 struct output_module silan_output = {
 	.shortname    = "slmp",
 	.description  = "silan multimedia framework",
@@ -638,6 +761,7 @@ struct output_module silan_output = {
 	.stop         = output_silan_stop,
 	.pause        = output_silan_pause,
 	.seek         = output_silan_seek,
+	.set_transport_callback = output_silan_set_transport_callback,
 	.get_position = output_silan_get_position,
 	.get_volume   = output_silan_get_volume,
 	.set_volume   = output_silan_set_volume,

@@ -102,9 +102,9 @@ void output_set_next_uri(const char *uri) {
 	}
 }
 
-int output_play(output_transition_cb_t transition_callback) {
+int output_play(void) {
 	if (output_module && output_module->play) {
-		return output_module->play(transition_callback);
+		return output_module->play();
 	}
 	return -1;
 }
@@ -128,6 +128,12 @@ int output_seek(int position) {
 		return output_module->seek(position);
 	}
 	return -1;
+}
+
+void output_set_transport_callback(output_transition_cb_t callback){
+	if (output_module && output_module->set_transport_callback) {
+		output_module->set_transport_callback(callback);
+	}
 }
 
 int output_get_position(int *track_dur, int *track_pos) {

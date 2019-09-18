@@ -858,7 +858,7 @@ static int stop(struct action_event *event)
 	return 0;
 }
 
-static void inform_play_transition_from_output(enum PlayFeedback fb) {
+static void transition_from_output(enum PlayFeedback fb) {
 	service_lock();
 	switch (fb) {
 	case PLAY_STOPPED:
@@ -903,7 +903,7 @@ static int play(struct action_event *event)
 		/* >>> fall through */
 
 	case TRANSPORT_PAUSED_PLAYBACK:
-		if (output_play(&inform_play_transition_from_output)) {
+		if (output_play()) {
 			upnp_set_error(event, 704, "Playing failed");
 			rc = -1;
 		} else {
@@ -1038,6 +1038,8 @@ void upnp_transport_init(struct upnp_device *device) {
 	pthread_t thread;
 	pthread_create(&thread, NULL, thread_update_track_time, NULL);
 */
+
+	output_set_transport_callback(&transition_from_output);
 }
 
 void upnp_transport_register_variable_listener(variable_change_listener_t cb, void *userdata) {

@@ -40,11 +40,12 @@ int output_loop(void);
 void output_set_uri(const char *uri);
 void output_set_next_uri(const char *uri);
 
-int output_play(output_transition_cb_t done_callback);
+int output_play(void);
 int output_stop(void);
 int output_pause(void);
 int output_get_position(int *track_dur, int *track_pos);
 int output_seek(int position);
+void output_set_transport_callback(output_transition_cb_t callback);
 
 int output_get_volume(int *v);
 int output_set_volume(int v);

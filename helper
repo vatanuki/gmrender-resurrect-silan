@@ -1,2 +1,0 @@
-libupnp-1.6.21: ./configure --host=csky-linux --enable-static=yes --enable-shared=no --prefix=/mnt/3tb/5in1/try/csky/64
-gmrender-resurrect: ./configure --host=csky-linux

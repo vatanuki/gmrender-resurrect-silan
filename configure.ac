@@ -13,12 +13,6 @@ AC_PROG_CC_STDC
 AC_PROG_INSTALL
 AC_PROG_MAKE_SET
 
-CFLAGS+=" -I/mnt/3tb/5in1/try/csky/64/include"
-LDFLAGS+=" -L/mnt/3tb/5in1/try/csky/64/lib"
-
-#SILAN_LIBS="-lslmp -lslmsg"
-#AC_SUBST(SILAN_LIBS)
-
 EXTRA_GCC_DEBUG_CFLAGS=""
 EXTRA_GCC_DEBUG_CXXFLAGS=""
 

@@ -34,11 +34,12 @@ struct output_module {
 	int (*init)(void);
 	void (*set_uri)(const char *uri);
 	void (*set_next_uri)(const char *uri);
-	int (*play)(output_transition_cb_t transition_callback);
+	int (*play)(void);
 	int (*stop)(void);
 	int (*pause)(void);
 	int (*loop)(void);
 	int (*seek)(int position);
+	void (*set_transport_callback)(output_transition_cb_t callback);
 
 	// parameters
 	int (*get_position)(int *track_dur, int *track_pos);
